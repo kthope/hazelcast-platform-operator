@@ -1,5 +1,8 @@
 name: Nightly E2E tests on AWS
 on:
+  push:
+    branches:
+      - "*"
   workflow_dispatch:
   schedule:
     - cron: "0 9 * * *"
