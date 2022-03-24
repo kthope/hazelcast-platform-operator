@@ -7,4 +7,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: hazelcast/hazelcast-platform-operator
-  newTag: latest-snapshot
+  newTag: "5.2"
