@@ -1,8 +1,11 @@
 name: Nightly E2E tests on Azure
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 9 * * *"
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+
 
 env:
   AZURE_RESOURCE_GROUP: hazelcast-platform-operator
@@ -134,7 +137,7 @@ jobs:
   slack_notify:
     name: Slack Notify
     needs: [ 'clean-up' ]
-    if: always() &&  needs.clean-up.result != 'success' 
+    if: always() &&  needs.clean-up.result != 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: 8398a7/action-slack@f3635935f58910a6d6951b73efe9037c960c8c04

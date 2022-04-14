@@ -1,8 +1,10 @@
 name: Nightly E2E tests on OCP
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 9 * * *"
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
 
 jobs:
   ocp-e2e-tests:
@@ -79,7 +81,7 @@ jobs:
   slack_notify:
     name: Slack Notify
     needs: [ 'ocp-e2e-tests' ]
-    if: always() &&  needs.ocp-e2e-tests.result != 'success' 
+    if: always() &&  needs.ocp-e2e-tests.result != 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: 8398a7/action-slack@f3635935f58910a6d6951b73efe9037c960c8c04
