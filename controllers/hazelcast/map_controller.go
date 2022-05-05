@@ -212,6 +212,7 @@ func (r *MapReconciler) ReconcileMapConfig(ctx context.Context, m *hazelcastv1al
 		if err != nil {
 			memberStatuses[member.UUID.String()] = hazelcastv1alpha1.MapFailed
 			failedMembers.WriteString(member.UUID.String() + ", ")
+			r.Log.Error(err, "Failed with member")
 			continue
 		}
 		memberStatuses[member.UUID.String()] = hazelcastv1alpha1.MapSuccess
@@ -238,7 +239,11 @@ func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, m *hazelcastv
 	}
 	mapInput.IndexConfigs = copyIndexes(ms.Indexes)
 	mapInput.HotRestartConfig.Enabled = ms.PersistenceEnabled
-
+	mapInput.WanReplicationRef = codecTypes.WanReplicationRef{
+		Name:                 mapInput.Name + "-default",
+		MergePolicyClassName: "PassThroughMergePolicy",
+		Filters:              []string{},
+	}
 }
 
 func copyIndexes(idx []hazelcastv1alpha1.IndexConfig) []codecTypes.IndexConfig {

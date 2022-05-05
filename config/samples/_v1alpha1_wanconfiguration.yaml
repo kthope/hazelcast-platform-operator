@@ -1,0 +1,6 @@
+apiVersion: hazelcast.com/v1alpha1
+kind: WanConfiguration
+metadata:
+  name: wanconfiguration-sample
+spec:
+  # TODO(user): Add fields here
