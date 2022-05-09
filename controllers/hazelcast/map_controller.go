@@ -239,11 +239,7 @@ func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, m *hazelcastv
 	}
 	mapInput.IndexConfigs = copyIndexes(ms.Indexes)
 	mapInput.HotRestartConfig.Enabled = ms.PersistenceEnabled
-	mapInput.WanReplicationRef = codecTypes.WanReplicationRef{
-		Name:                 mapInput.Name + "-default",
-		MergePolicyClassName: "PassThroughMergePolicy",
-		Filters:              []string{},
-	}
+	mapInput.WanReplicationRef = defaultWanReference(m.MapName())
 }
 
 func copyIndexes(idx []hazelcastv1alpha1.IndexConfig) []codecTypes.IndexConfig {

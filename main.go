@@ -140,11 +140,11 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Map")
 		os.Exit(1)
 	}
-	if err = (&hazelcast.WanConfigurationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "WanConfiguration")
+	if err = hazelcast.NewWanConfigurationReconciler(
+		mgr.GetClient(),
+		ctrl.Log.WithName("controllers").WithName("WanConfiguration"),
+	).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controllers", "WanConfiguration")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
