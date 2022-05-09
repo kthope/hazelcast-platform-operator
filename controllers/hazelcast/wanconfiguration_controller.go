@@ -27,7 +27,7 @@ type WanConfigurationReconciler struct {
 func NewWanConfigurationReconciler(client client.Client, log logr.Logger) *WanConfigurationReconciler {
 	return &WanConfigurationReconciler{
 		Client: client,
-		Logger: log.WithValues("controller"),
+		Logger: log,
 	}
 }
 
@@ -43,6 +43,7 @@ func (r *WanConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err := r.Get(ctx, req.NamespacedName, wan); err != nil {
 		return ctrl.Result{}, err
 	}
+	ctx = context.WithValue(ctx, "logger", logger)
 
 	logger.Info("Getting Hazelcast client")
 	cli, err := r.getHazelcastClient(ctx, wan)
@@ -183,6 +184,7 @@ func addBatchPublisherConfig(
 ) (*addBatchPublisherResponse, error) {
 	cliInt := hazelcast.NewClientInternal(client)
 
+	logger := ctx.Value("logger").(logr.Logger)
 	req := codec.EncodeMCAddWanBatchPublisherConfigRequest(
 		request.name,
 		request.targetCluster,
@@ -204,17 +206,27 @@ func addBatchPublisherConfig(
 			return nil, err
 		}
 		added, ignored := codec.DecodeMCAddWanBatchPublisherConfigResponse(resp)
+		logger.Info("addWanBatchPublisher decoded", "added", added, "ignored", ignored)
 		respsAdded, respsIgnored = append(respsAdded, added), append(respsIgnored, ignored)
 	}
 
-	if !(checkResponsesEqual(respsAdded) && checkResponsesEqual(respsIgnored)) {
-		return nil, fmt.Errorf("addWanBatchPublisher: different responses from members")
-	}
-
+	added, ignored := inferValidResponse(respsAdded, respsIgnored)
 	return &addBatchPublisherResponse{
-		added:   respsAdded[0],
-		ignored: respsIgnored[0],
+		added:   added,
+		ignored: ignored,
 	}, nil
+}
+
+func inferValidResponse(added [][]string, ignored [][]string) ([]string, []string) {
+	mostAddedIndex := -1
+	mostAddedLen := -1
+	for i := 0; i < len(added); i++ {
+		if len(added[i]) > mostAddedLen {
+			mostAddedIndex = i
+			mostAddedLen = len(added[i])
+		}
+	}
+	return added[mostAddedIndex], ignored[mostAddedIndex]
 }
 
 type changeWanStateRequest struct {
