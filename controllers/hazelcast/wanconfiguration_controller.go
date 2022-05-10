@@ -139,7 +139,7 @@ func (r *WanConfigurationReconciler) stopWanConfiguration(ctx context.Context, c
 	req := &changeWanStateRequest{
 		name:        hazelcastWanConfigurationName(wan.Spec.MapResourceName),
 		publisherId: wan.Name,
-		state:       codecTypes.WanReplicationStatePaused,
+		state:       codecTypes.WanReplicationStateStopped,
 	}
 	return changeWanState(ctx, client, req)
 }
