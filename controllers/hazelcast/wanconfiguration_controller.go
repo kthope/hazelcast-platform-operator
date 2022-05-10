@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/hazelcast/hazelcast-go-client"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,7 +42,12 @@ func (r *WanConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	logger.Info("Fetching WAN configuration")
 	wan := &hazelcastcomv1alpha1.WanConfiguration{}
 	if err := r.Get(ctx, req.NamespacedName, wan); err != nil {
-		return ctrl.Result{}, err
+		if kerrors.IsNotFound(err) {
+			logger.V(2).Info("Could not find WanConfiguration, it is probably already deleted")
+			return ctrl.Result{}, nil
+		} else {
+			return ctrl.Result{}, err
+		}
 	}
 	ctx = context.WithValue(ctx, "logger", logger)
 
