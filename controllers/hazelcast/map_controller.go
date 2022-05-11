@@ -111,7 +111,7 @@ func (r *MapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeue, err
 	}
 
-	ms, err := r.ReconcileMapConfig(ctx, m, cl, createdBefore)
+	ms, err := r.ReconcileMapConfig(ctx, m, h, cl, createdBefore)
 	if err != nil {
 		r.Log.Error(err, "Error reconciling the object")
 		return updateMapStatus(ctx, r.Client, m, pendingStatus(retryAfterForMap).
@@ -182,7 +182,13 @@ func GetHazelcastClient(m *hazelcastv1alpha1.Map) (*hazelcast.Client, error) {
 	return hzcl.client, nil
 }
 
-func (r *MapReconciler) ReconcileMapConfig(ctx context.Context, m *hazelcastv1alpha1.Map, cl *hazelcast.Client, createdBefore bool) (map[string]hazelcastv1alpha1.MapConfigState, error) {
+func (r *MapReconciler) ReconcileMapConfig(
+	ctx context.Context,
+	m *hazelcastv1alpha1.Map,
+	hz *hazelcastv1alpha1.Hazelcast,
+	cl *hazelcast.Client,
+	createdBefore bool,
+) (map[string]hazelcastv1alpha1.MapConfigState, error) {
 	ci := hazelcast.NewClientInternal(cl)
 	var req *proto.ClientMessage
 	if createdBefore {
@@ -197,7 +203,7 @@ func (r *MapReconciler) ReconcileMapConfig(ctx context.Context, m *hazelcastv1al
 		)
 	} else {
 		mapInput := codecTypes.DefaultAddMapConfigInput()
-		fillAddMapConfigInput(mapInput, m)
+		fillAddMapConfigInput(mapInput, hz, m)
 		req = codec.EncodeDynamicConfigAddMapConfigRequest(mapInput)
 	}
 
@@ -224,7 +230,7 @@ func (r *MapReconciler) ReconcileMapConfig(ctx context.Context, m *hazelcastv1al
 	return memberStatuses, nil
 }
 
-func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, m *hazelcastv1alpha1.Map) {
+func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, hz *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) {
 	mapInput.Name = m.MapName()
 
 	ms := m.Spec
@@ -238,7 +244,24 @@ func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, m *hazelcastv
 	}
 	mapInput.IndexConfigs = copyIndexes(ms.Indexes)
 	mapInput.HotRestartConfig.Enabled = ms.PersistenceEnabled
+	mapInput.WanReplicationRef = defaultWanReplicationRef(hz, m)
+}
 
+func defaultWanReplicationRef(hz *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) codecTypes.WanReplicationRef {
+	if util.IsEnterprise(hz.Spec.Repository) {
+		return codecTypes.WanReplicationRef{}
+	}
+
+	return codecTypes.WanReplicationRef{
+		Name:                 defaultWanReplicationRefName(m),
+		MergePolicyClassName: n.DefaultMergePolicyClassName,
+		Filters:              []string{},
+		RepublishingEnabled:  true,
+	}
+}
+
+func defaultWanReplicationRefName(m *hazelcastv1alpha1.Map) string {
+	return m.GetName() + "-default"
 }
 
 func copyIndexes(idx []hazelcastv1alpha1.IndexConfig) []codecTypes.IndexConfig {
