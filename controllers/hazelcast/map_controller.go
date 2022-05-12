@@ -248,7 +248,7 @@ func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, hz *hazelcast
 }
 
 func defaultWanReplicationRef(hz *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) codecTypes.WanReplicationRef {
-	if util.IsEnterprise(hz.Spec.Repository) {
+	if !util.IsEnterprise(hz.Spec.Repository) {
 		return codecTypes.WanReplicationRef{}
 	}
 
