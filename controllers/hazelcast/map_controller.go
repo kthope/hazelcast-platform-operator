@@ -128,7 +128,7 @@ func (r *MapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeue, err
 	}
 
-	persisted, err := r.validateMapConfigPersistence(ctx, m)
+	persisted, err := r.validateMapConfigPersistence(ctx, h, m)
 	if err != nil {
 		return updateMapStatus(ctx, r.Client, m, failedStatus(err).withMessage(err.Error()))
 	}
@@ -262,10 +262,10 @@ func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, hz *hazelcast
 	}
 	mapInput.IndexConfigs = copyIndexes(ms.Indexes)
 	mapInput.HotRestartConfig.Enabled = ms.PersistenceEnabled
-	mapInput.WanReplicationRef = defaultWanReplicationRef(hz, m)
+	mapInput.WanReplicationRef = defaultWanReplicationRefCodec(hz, m)
 }
 
-func defaultWanReplicationRef(hz *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) codecTypes.WanReplicationRef {
+func defaultWanReplicationRefCodec(hz *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) codecTypes.WanReplicationRef {
 	if !util.IsEnterprise(hz.Spec.Repository) {
 		return codecTypes.WanReplicationRef{}
 	}
@@ -275,6 +275,15 @@ func defaultWanReplicationRef(hz *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alp
 		MergePolicyClassName: n.DefaultMergePolicyClassName,
 		Filters:              []string{},
 		RepublishingEnabled:  true,
+	}
+}
+
+func wanReplicationRef(ref codecTypes.WanReplicationRef) config.WanReplicationReference {
+	return config.WanReplicationReference{
+		Name:                 ref.Name,
+		MergePolicyClassName: ref.MergePolicyClassName,
+		RepublishingEnabled:  ref.RepublishingEnabled,
+		Filters:              ref.Filters,
 	}
 }
 
@@ -321,7 +330,7 @@ func (r *MapReconciler) updateLastSuccessfulConfiguration(ctx context.Context, m
 	return err
 }
 
-func (r *MapReconciler) validateMapConfigPersistence(ctx context.Context, m *hazelcastv1alpha1.Map) (bool, error) {
+func (r *MapReconciler) validateMapConfigPersistence(ctx context.Context, h *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) (bool, error) {
 	cm := &corev1.ConfigMap{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: m.Spec.HazelcastResourceName, Namespace: m.Namespace}, cm)
 	if err != nil {
@@ -335,7 +344,7 @@ func (r *MapReconciler) validateMapConfigPersistence(ctx context.Context, m *haz
 	}
 
 	if mcfg, ok := hzConfig.Hazelcast.Map[m.MapName()]; !ok {
-		currentMcfg := createMapConfig(&m.Spec)
+		currentMcfg := createMapConfig(h, m)
 		if !reflect.DeepEqual(mcfg, currentMcfg) { // TODO replace DeepEqual with custom implementation
 			return false, nil
 		}
