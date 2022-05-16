@@ -61,17 +61,17 @@ type EndpointGroup struct {
 }
 
 type Map struct {
-	BackupCount             int32                   `yaml:"backup-count"`
-	AsyncBackupCount        int32                   `yaml:"async-backup-count"`
-	TimeToLiveSeconds       int32                   `yaml:"time-to-live-seconds"`
-	MaxIdleSeconds          int32                   `yaml:"max-idle-seconds"`
-	Eviction                MapEviction             `yaml:"eviction,omitempty"`
-	ReadBackupData          bool                    `yaml:"read-backup-data"`
-	InMemoryFormat          string                  `yaml:"in-memory-format"`
-	StatisticsEnabled       bool                    `yaml:"statistics-enabled"`
-	Indexes                 []MapIndex              `yaml:"indexes,omitempty"`
-	HotRestart              MapHotRestart           `yaml:"hot-restart,omitempty"`
-	WanReplicationReference WanReplicationReference `yaml:"wan-replication-reference,omitempty"`
+	BackupCount             int32                              `yaml:"backup-count"`
+	AsyncBackupCount        int32                              `yaml:"async-backup-count"`
+	TimeToLiveSeconds       int32                              `yaml:"time-to-live-seconds"`
+	MaxIdleSeconds          int32                              `yaml:"max-idle-seconds"`
+	Eviction                MapEviction                        `yaml:"eviction,omitempty"`
+	ReadBackupData          bool                               `yaml:"read-backup-data"`
+	InMemoryFormat          string                             `yaml:"in-memory-format"`
+	StatisticsEnabled       bool                               `yaml:"statistics-enabled"`
+	Indexes                 []MapIndex                         `yaml:"indexes,omitempty"`
+	HotRestart              MapHotRestart                      `yaml:"hot-restart,omitempty"`
+	WanReplicationReference map[string]WanReplicationReference `yaml:"wan-replication-ref,omitempty"`
 }
 
 type MapEviction struct {
@@ -98,7 +98,6 @@ type MapHotRestart struct {
 }
 
 type WanReplicationReference struct {
-	Name                 string   `yaml:"name"`
 	MergePolicyClassName string   `yaml:"merge-policy-class-name"`
 	RepublishingEnabled  bool     `yaml:"republishing-enabled"`
 	Filters              []string `yaml:"filters"`

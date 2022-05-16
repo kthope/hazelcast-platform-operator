@@ -278,12 +278,13 @@ func defaultWanReplicationRefCodec(hz *hazelcastv1alpha1.Hazelcast, m *hazelcast
 	}
 }
 
-func wanReplicationRef(ref codecTypes.WanReplicationRef) config.WanReplicationReference {
-	return config.WanReplicationReference{
-		Name:                 ref.Name,
-		MergePolicyClassName: ref.MergePolicyClassName,
-		RepublishingEnabled:  ref.RepublishingEnabled,
-		Filters:              ref.Filters,
+func wanReplicationRef(ref codecTypes.WanReplicationRef) map[string]config.WanReplicationReference {
+	return map[string]config.WanReplicationReference{
+		ref.Name: {
+			MergePolicyClassName: ref.MergePolicyClassName,
+			RepublishingEnabled:  ref.RepublishingEnabled,
+			Filters:              ref.Filters,
+		},
 	}
 }
 
