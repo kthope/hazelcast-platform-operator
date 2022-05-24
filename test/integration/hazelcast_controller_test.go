@@ -760,10 +760,9 @@ var _ = Describe("Hazelcast controller", func() {
 		When("Backup Agent is configured", func() {
 			It("Persistence Configuration must be enabled", Label("fast"), func() {
 				spec := test.HazelcastSpec(defaultSpecValues, ee)
-				spec.Backup = &hazelcastv1alpha1.BackupAgentConfiguration{
-					AgentRepository: "hazelcast/platform-operator-agent",
-					AgentVersion:    "0.1.0",
-					BucketSecret:    "br-secret",
+				spec.Persistence.Agent = &hazelcastv1alpha1.AgentConfiguration{
+					Repository: "hazelcast/platform-operator-agent",
+					Version:    "0.1.0",
 				}
 
 				hz := &hazelcastv1alpha1.Hazelcast{
@@ -795,10 +794,9 @@ var _ = Describe("Hazelcast controller", func() {
 						StorageClassName: &[]string{"standard"}[0],
 					},
 				}
-				spec.Backup = &hazelcastv1alpha1.BackupAgentConfiguration{
-					AgentRepository: "hazelcast/platform-operator-agent",
-					AgentVersion:    "0.1.0",
-					BucketSecret:    "br-secret",
+				spec.Persistence.Agent = &hazelcastv1alpha1.AgentConfiguration{
+					Repository: "hazelcast/platform-operator-agent",
+					Version:    "0.1.0",
 				}
 
 				hz := &hazelcastv1alpha1.Hazelcast{

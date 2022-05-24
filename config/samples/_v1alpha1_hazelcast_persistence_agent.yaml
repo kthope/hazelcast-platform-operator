@@ -5,16 +5,22 @@ metadata:
 spec:
   clusterSize: 3
   repository: 'docker.io/hazelcast/hazelcast-enterprise'
-  version: '5.1'
+  version: '5.1.1'
   licenseKeySecret: hazelcast-license-key
+  exposeExternally:
+    type: Unisocket
+    discoveryServiceType: LoadBalancer
   persistence:
+    backupType: "External"
     baseDir: "/data/hot-restart/"
     clusterDataRecoveryPolicy: "FullRecoveryOnly"
     pvc:
-      accessModes: ["ReadWriteOnce"]
+      accessModes: [ "ReadWriteOnce" ]
       requestStorage: 8Gi
       storageClassName: "standard"
-  backup:
-    agentRepository: hazelcast/platform-operator-agent
-    agentVersion: 0.1.0
-    bucketSecret: br-secret
+    agent:
+      repository: hasancelik/platform-operator-agent
+      version: 0.1.0
+    restore:
+      secret: br-secret
+      uri: "s3://operator-backup?prefix=hazelcast/<DATE>/&region=us-east-1"

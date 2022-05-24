@@ -5,3 +5,4 @@ metadata:
 spec:
   hazelcastResourceName: hazelcast
   bucket: "s3://operator-backup"
+  secret: br-secret

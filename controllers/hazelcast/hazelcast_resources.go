@@ -187,7 +187,7 @@ func (r *HazelcastReconciler) reconcileClusterRoleBinding(ctx context.Context, h
 
 func (r *HazelcastReconciler) reconcileService(ctx context.Context, h *hazelcastv1alpha1.Hazelcast, logger logr.Logger) error {
 	var service *corev1.Service
-	if h.Spec.Backup.IsEnabled() {
+	if h.Spec.Persistence.BackupType == hazelcastv1alpha1.External {
 		service = &corev1.Service{
 			ObjectMeta: metadata(h),
 			Spec: corev1.ServiceSpec{
@@ -677,13 +677,11 @@ func (r *HazelcastReconciler) reconcileStatefulset(ctx context.Context, h *hazel
 		}
 	}
 
-	if h.Spec.Persistence.IsEnabled() {
-		if h.Spec.Backup.IsEnabled() {
-			sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, backupAgentContainer(h))
-		}
-		if h.Spec.Restore.IsEnabled() {
-			sts.Spec.Template.Spec.InitContainers = append(sts.Spec.Template.Spec.InitContainers, restoreAgentContainer(h))
-		}
+	if h.Spec.Persistence.IsExternal() {
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, backupAgentContainer(h))
+	}
+	if h.Spec.Persistence.Restore.IsEnabled() {
+		sts.Spec.Template.Spec.InitContainers = append(sts.Spec.Template.Spec.InitContainers, restoreAgentContainer(h))
 	}
 
 	err := controllerutil.SetControllerReference(h, sts, r.Scheme)
@@ -751,7 +749,7 @@ func agentCredentials(h *hazelcastv1alpha1.Hazelcast, secret string) []v1.EnvVar
 func backupAgentContainer(h *hazelcastv1alpha1.Hazelcast) v1.Container {
 	return v1.Container{
 		Name:  n.BackupAgent,
-		Image: h.BackupAgentDockerImage(),
+		Image: h.AgentDockerImage(),
 		Ports: []v1.ContainerPort{{
 			ContainerPort: n.DefaultAgentPort,
 			Name:          n.BackupAgent,
@@ -786,7 +784,7 @@ func backupAgentContainer(h *hazelcastv1alpha1.Hazelcast) v1.Container {
 			SuccessThreshold:    1,
 			FailureThreshold:    10,
 		},
-		Env: agentCredentials(h, h.Spec.Backup.BucketSecret),
+		Env: agentCredentials(h, "br-secret"),
 		VolumeMounts: []v1.VolumeMount{{
 			Name:      n.PersistenceVolumeName,
 			MountPath: h.Spec.Persistence.BaseDir,
@@ -797,12 +795,12 @@ func backupAgentContainer(h *hazelcastv1alpha1.Hazelcast) v1.Container {
 func restoreAgentContainer(h *hazelcastv1alpha1.Hazelcast) v1.Container {
 	return v1.Container{
 		Name:  n.RestoreAgent,
-		Image: h.RestoreAgentDockerImage(),
+		Image: h.AgentDockerImage(),
 		Args:  []string{"restore"},
-		Env: append(agentCredentials(h, h.Spec.Restore.BucketSecret),
+		Env: append(agentCredentials(h, h.Spec.Persistence.Restore.Secret),
 			v1.EnvVar{
 				Name:  "RESTORE_BUCKET",
-				Value: h.Spec.Restore.BucketPath,
+				Value: h.Spec.Persistence.Restore.URI,
 			},
 			v1.EnvVar{
 				Name:  "RESTORE_DESTINATION",
@@ -920,7 +918,7 @@ func (r *HazelcastReconciler) checkHotRestart(ctx context.Context, h *hazelcastv
 
 func (r *HazelcastReconciler) ensureClusterActive(ctx context.Context, h *hazelcastv1alpha1.Hazelcast, logger logr.Logger) error {
 	// make sure restore is active
-	if !h.Spec.Restore.IsEnabled() {
+	if !h.Spec.Persistence.Restore.IsEnabled() {
 		return nil
 	}
 

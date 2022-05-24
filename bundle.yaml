@@ -49,21 +49,6 @@ spec:
               repository: docker.io/hazelcast/hazelcast
             description: HazelcastSpec defines the desired state of Hazelcast
             properties:
-              backup:
-                description: Backup Agent configuration
-                properties:
-                  agentRepository:
-                    default: docker.io/hazelcast/platform-operator-agent
-                    description: Repository to pull Hazelcast Platform Operator Agent(https://github.com/hazelcast/platform-operator-agent)
-                    type: string
-                  agentVersion:
-                    default: 1.0.0
-                    description: Version of Hazelcast Platform Operator Agent.
-                    type: string
-                  bucketSecret:
-                    description: Name of the secret with credentials for cloud providers.
-                    type: string
-                type: object
               clusterName:
                 default: dev
                 description: Name of the Hazelcast cluster.
@@ -129,11 +114,31 @@ spec:
               persistence:
                 description: Persistence configuration
                 properties:
+                  agent:
+                    description: B&R Agent configurations
+                    properties:
+                      repository:
+                        default: docker.io/hazelcast/platform-operator-agent
+                        description: Repository to pull Hazelcast Platform Operator
+                          Agent(https://github.com/hazelcast/platform-operator-agent)
+                        type: string
+                      version:
+                        default: 0.1.0
+                        description: Version of Hazelcast Platform Operator Agent.
+                        type: string
+                    type: object
                   autoForceStart:
                     default: false
                     description: AutoForceStart enables the detection of constantly
                       failing cluster and trigger the Force Start action.
                     type: boolean
+                  backupType:
+                    default: Local
+                    description: BackupType
+                    enum:
+                    - External
+                    - Local
+                    type: string
                   baseDir:
                     description: Persistence base directory.
                     type: string
@@ -175,6 +180,17 @@ spec:
                           belongs to.
                         type: string
                     type: object
+                  restore:
+                    description: Restore configuration
+                    properties:
+                      secret:
+                        description: Name of the secret with credentials for cloud
+                          providers.
+                        type: string
+                      uri:
+                        description: Full path to blob storage bucket.
+                        type: string
+                    type: object
                 required:
                 - baseDir
                 type: object
@@ -207,24 +223,6 @@ spec:
                       it defaults to Limits if that is explicitly specified, otherwise
                       to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
                     type: object
-                type: object
-              restore:
-                description: Restore Agent configuration
-                properties:
-                  agentRepository:
-                    default: docker.io/hazelcast/platform-operator-agent
-                    description: Repository to pull Hazelcast Platform Operator Agent(https://github.com/hazelcast/platform-operator-agent)
-                    type: string
-                  agentVersion:
-                    default: 1.0.0
-                    description: Version of Hazelcast Platform Operator Agent.
-                    type: string
-                  bucketPath:
-                    description: Full path to blob storage bucket.
-                    type: string
-                  bucketSecret:
-                    description: Name of the secret with credentials for cloud providers.
-                    type: string
                 type: object
               scheduling:
                 description: Scheduling details
@@ -1184,8 +1182,11 @@ spec:
                   0 * * * \t@hourly                | Run once an hour, beginning of
                   hour        | 0 * * * *"
                 type: string
+              secret:
+                type: string
             required:
             - hazelcastResourceName
+            - secret
             type: object
           status:
             description: HotBackupStatus defines the observed state of HotBackup

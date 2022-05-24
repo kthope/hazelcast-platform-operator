@@ -63,8 +63,11 @@ spec:
                   0 * * * \t@hourly                | Run once an hour, beginning of
                   hour        | 0 * * * *"
                 type: string
+              secret:
+                type: string
             required:
             - hazelcastResourceName
+            - secret
             type: object
           status:
             description: HotBackupStatus defines the observed state of HotBackup
