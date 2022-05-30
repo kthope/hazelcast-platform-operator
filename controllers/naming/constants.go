@@ -108,3 +108,8 @@ const (
 	// DefaultAgentPort Backup&Restore agent default port
 	DefaultAgentPort = 8080
 )
+
+// WAN related configuration constants
+const (
+	DefaultMergePolicyClassName = "PassThroughMergePolicy"
+)

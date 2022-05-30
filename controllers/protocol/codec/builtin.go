@@ -156,6 +156,7 @@ func NextFrameIsNullFrame(frameIterator *proto.ForwardFrameIterator) bool {
 	}
 	return isNullFrame
 }
+
 func DecodeNullableForString(frameIterator *proto.ForwardFrameIterator) string {
 	if NextFrameIsNullFrame(frameIterator) {
 		return ""

@@ -4,21 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/hazelcast/hazelcast-go-client"
 	proto "github.com/hazelcast/hazelcast-go-client"
+	"gopkg.in/yaml.v2"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	hazelcastv1alpha1 "github.com/hazelcast/hazelcast-platform-operator/api/v1alpha1"
+	"github.com/hazelcast/hazelcast-platform-operator/controllers/config"
 	n "github.com/hazelcast/hazelcast-platform-operator/controllers/naming"
 	"github.com/hazelcast/hazelcast-platform-operator/controllers/protocol/codec"
 	codecTypes "github.com/hazelcast/hazelcast-platform-operator/controllers/protocol/types"
@@ -80,7 +83,7 @@ func (r *MapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		}
 		if s == string(ms) {
 			logger.Info("Map Config was already applied.", "name", m.Name, "namespace", m.Namespace)
-			return reconcile.Result{}, nil
+			return updateMapStatus(ctx, r.Client, m, successStatus())
 		}
 		lastSpec := &hazelcastv1alpha1.MapSpec{}
 		err = json.Unmarshal([]byte(s), lastSpec)
@@ -111,13 +114,27 @@ func (r *MapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeue, err
 	}
 
-	ms, err := r.ReconcileMapConfig(ctx, m, cl, createdBefore)
+	ms, err := r.ReconcileMapConfig(ctx, m, h, cl, createdBefore)
 	if err != nil {
 		r.Log.Error(err, "Error reconciling the object")
 		return updateMapStatus(ctx, r.Client, m, pendingStatus(retryAfterForMap).
 			withError(err).
 			withMessage(err.Error()).
 			withMemberStatuses(ms))
+	}
+
+	requeue, err = updateMapStatus(ctx, r.Client, m, persistingStatus(1*time.Second).withMessage("Persisting the applied map config."))
+	if err != nil {
+		return requeue, err
+	}
+
+	persisted, err := r.validateMapConfigPersistence(ctx, h, m)
+	if err != nil {
+		return updateMapStatus(ctx, r.Client, m, failedStatus(err).withMessage(err.Error()))
+	}
+
+	if !persisted {
+		return updateMapStatus(ctx, r.Client, m, persistingStatus(1*time.Second).withMessage("Waiting for Map Config to be persisted."))
 	}
 
 	err = r.updateLastSuccessfulConfiguration(ctx, m)
@@ -151,6 +168,7 @@ func ValidatePersistence(pe bool, h *hazelcastv1alpha1.Hazelcast) error {
 
 	return nil
 }
+
 func ValidateNotUpdatableFields(current *hazelcastv1alpha1.MapSpec, last *hazelcastv1alpha1.MapSpec) error {
 	if current.Name != last.Name {
 		return fmt.Errorf("name cannot be updated.")
@@ -182,7 +200,13 @@ func GetHazelcastClient(m *hazelcastv1alpha1.Map) (*hazelcast.Client, error) {
 	return hzcl.client, nil
 }
 
-func (r *MapReconciler) ReconcileMapConfig(ctx context.Context, m *hazelcastv1alpha1.Map, cl *hazelcast.Client, createdBefore bool) (map[string]hazelcastv1alpha1.MapConfigState, error) {
+func (r *MapReconciler) ReconcileMapConfig(
+	ctx context.Context,
+	m *hazelcastv1alpha1.Map,
+	hz *hazelcastv1alpha1.Hazelcast,
+	cl *hazelcast.Client,
+	createdBefore bool,
+) (map[string]hazelcastv1alpha1.MapConfigState, error) {
 	ci := hazelcast.NewClientInternal(cl)
 	var req *proto.ClientMessage
 	if createdBefore {
@@ -197,7 +221,7 @@ func (r *MapReconciler) ReconcileMapConfig(ctx context.Context, m *hazelcastv1al
 		)
 	} else {
 		mapInput := codecTypes.DefaultAddMapConfigInput()
-		fillAddMapConfigInput(mapInput, m)
+		fillAddMapConfigInput(mapInput, hz, m)
 		req = codec.EncodeDynamicConfigAddMapConfigRequest(mapInput)
 	}
 
@@ -225,7 +249,7 @@ func (r *MapReconciler) ReconcileMapConfig(ctx context.Context, m *hazelcastv1al
 	return memberStatuses, nil
 }
 
-func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, m *hazelcastv1alpha1.Map) {
+func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, hz *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) {
 	mapInput.Name = m.MapName()
 
 	ms := m.Spec
@@ -233,13 +257,40 @@ func fillAddMapConfigInput(mapInput *codecTypes.AddMapConfigInput, m *hazelcastv
 	mapInput.TimeToLiveSeconds = *ms.TimeToLiveSeconds
 	mapInput.MaxIdleSeconds = *ms.MaxIdleSeconds
 	if ms.Eviction != nil {
-		mapInput.EvictionConfig.EvictionPolicy = ms.Eviction.EvictionPolicy
+		mapInput.EvictionConfig.EvictionPolicy = string(ms.Eviction.EvictionPolicy)
 		mapInput.EvictionConfig.Size = *ms.Eviction.MaxSize
-		mapInput.EvictionConfig.MaxSizePolicy = ms.Eviction.MaxSizePolicy
+		mapInput.EvictionConfig.MaxSizePolicy = string(ms.Eviction.MaxSizePolicy)
 	}
 	mapInput.IndexConfigs = copyIndexes(ms.Indexes)
 	mapInput.HotRestartConfig.Enabled = ms.PersistenceEnabled
-	mapInput.WanReplicationRef = defaultWanReference(m.MapName())
+	mapInput.WanReplicationRef = defaultWanReplicationRefCodec(hz, m)
+}
+
+func defaultWanReplicationRefCodec(hz *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) codecTypes.WanReplicationRef {
+	if !util.IsEnterprise(hz.Spec.Repository) {
+		return codecTypes.WanReplicationRef{}
+	}
+
+	return codecTypes.WanReplicationRef{
+		Name:                 defaultWanReplicationRefName(m),
+		MergePolicyClassName: n.DefaultMergePolicyClassName,
+		Filters:              []string{},
+		RepublishingEnabled:  true,
+	}
+}
+
+func wanReplicationRef(ref codecTypes.WanReplicationRef) map[string]config.WanReplicationReference {
+	return map[string]config.WanReplicationReference{
+		ref.Name: {
+			MergePolicyClassName: ref.MergePolicyClassName,
+			RepublishingEnabled:  ref.RepublishingEnabled,
+			Filters:              ref.Filters,
+		},
+	}
+}
+
+func defaultWanReplicationRefName(m *hazelcastv1alpha1.Map) string {
+	return m.GetName() + "-default"
 }
 
 func copyIndexes(idx []hazelcastv1alpha1.IndexConfig) []codecTypes.IndexConfig {
@@ -279,6 +330,28 @@ func (r *MapReconciler) updateLastSuccessfulConfiguration(ctx context.Context, m
 		r.Log.Info("Operation result", "Map Annotation", m.Name, "result", opResult)
 	}
 	return err
+}
+
+func (r *MapReconciler) validateMapConfigPersistence(ctx context.Context, h *hazelcastv1alpha1.Hazelcast, m *hazelcastv1alpha1.Map) (bool, error) {
+	cm := &corev1.ConfigMap{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: m.Spec.HazelcastResourceName, Namespace: m.Namespace}, cm)
+	if err != nil {
+		return false, fmt.Errorf("Could not find ConfigMap for map config persistence.")
+	}
+
+	hzConfig := &config.HazelcastWrapper{}
+	err = yaml.Unmarshal([]byte(cm.Data["hazelcast.yaml"]), hzConfig)
+	if err != nil {
+		return false, fmt.Errorf("Persisted ConfigMap is not formatted correctly.")
+	}
+
+	if mcfg, ok := hzConfig.Hazelcast.Map[m.MapName()]; !ok {
+		currentMcfg := createMapConfig(h, m)
+		if !reflect.DeepEqual(mcfg, currentMcfg) { // TODO replace DeepEqual with custom implementation
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
