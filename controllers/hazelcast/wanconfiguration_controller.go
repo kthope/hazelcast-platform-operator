@@ -117,12 +117,12 @@ func (r *WanConfigurationReconciler) applyWanConfiguration(ctx context.Context, 
 		wan.Spec.TargetClusterName,
 		wan.Name,
 		wan.Spec.Endpoints,
-		1024,
-		128,
-		200,
-		10000,
-		0,
-		0,
+		wan.Spec.Queue.Capacity,
+		wan.Spec.Batch.Size,
+		wan.Spec.Batch.MaximumDelay,
+		wan.Spec.Acknowledgement.Timeout,
+		convertAckType(wan.Spec.Acknowledgement.Type),
+		convertQueueBehavior(wan.Spec.Queue.FullBehavior),
 	}
 	resp, err := addBatchPublisherConfig(ctx, client, req)
 	if err != nil {
@@ -196,12 +196,12 @@ func addBatchPublisherConfig(
 		request.targetCluster,
 		request.publisherId,
 		request.endpoints,
-		1024,
-		128,
-		200,
-		10000,
-		0,
-		0,
+		request.queueCapacity,
+		request.batchSize,
+		request.batchMaxDelayMillis,
+		request.responseTimeoutMillis,
+		request.ackType,
+		request.queueFullBehavior,
 	)
 
 	respsAdded := make([][]string, 0)
@@ -257,6 +257,30 @@ func changeWanState(ctx context.Context, client *hazelcast.Client, request *chan
 		}
 	}
 	return nil
+}
+
+func convertAckType(ackType hazelcastcomv1alpha1.AcknowledgementType) int32 {
+	switch ackType {
+	case hazelcastcomv1alpha1.ACK_ON_RECEIPT:
+		return 0
+	case hazelcastcomv1alpha1.ACK_ON_OPERATION_COMPLETE:
+		return 1
+	default:
+		return -1
+	}
+}
+
+func convertQueueBehavior(behavior hazelcastcomv1alpha1.FullBehaviorSetting) int32 {
+	switch behavior {
+	case hazelcastcomv1alpha1.DISCARD_AFTER_MUTATION:
+		return 0
+	case hazelcastcomv1alpha1.THROW_EXCEPTION:
+		return 1
+	case hazelcastcomv1alpha1.THROW_EXCEPTION_ONLY_IF_REPLICATION_ACTIVE:
+		return 2
+	default:
+		return -1
+	}
 }
 
 func checkResponsesEqual(resps [][]string) bool {

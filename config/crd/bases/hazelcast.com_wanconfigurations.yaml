@@ -36,17 +36,67 @@ spec:
           spec:
             description: WanConfigurationSpec defines the desired state of WanConfiguration
             properties:
+              acknowledgement:
+                description: Acknowledgement is the configuration for the condition
+                  when the next batch of WAN events are sent.
+                properties:
+                  timeout:
+                    default: 60000
+                    description: Timeout represents the time the source cluster waits
+                      for the acknowledgement. After timeout, the events will be resent.
+                    type: integer
+                  type:
+                    default: ACK_ON_OPERATION_COMPLETE
+                    description: Type represents how a batch of replication events
+                      is considered successfully replicated.
+                    enum:
+                    - ACK_ON_OPERATION_COMPLETE
+                    - ACK_ON_RECEIPT
+                    type: string
+                type: object
+              batch:
+                description: Batch is the configuration for WAN events batch.
+                properties:
+                  maximumDelay:
+                    default: 1000
+                    description: MaximumDelay represents the maximum delay in milliseconds.
+                      If the batch size is not reached, the events will be sent after
+                      the maximum delay.
+                    type: integer
+                  size:
+                    default: 500
+                    description: Size represents the maximum batch size.
+                    type: integer
+                type: object
               endpoints:
-                description: Endpoints is the target cluster endpoints
+                description: Endpoints is the target cluster endpoints.
+                minLength: 1
                 type: string
               mapResourceName:
                 description: MapResourceName is the name of Map custom resource which
-                  WAN replication will be applied to
+                  WAN replication will be applied to.
                 minLength: 1
                 type: string
+              queue:
+                description: Queue is the configuration for WAN events queue.
+                properties:
+                  capacity:
+                    default: 10000
+                    description: Capacity is the total capacity of WAN queue.
+                    type: integer
+                  fullBehavior:
+                    default: DISCARD_AFTER_MUTATION
+                    description: FullBehavior represents the behavior of the new arrival
+                      when the queue is full.
+                    enum:
+                    - DISCARD_AFTER_MUTATION
+                    - THROW_EXCEPTION
+                    - THROW_EXCEPTION_ONLY_IF_REPLICATION_ACTIVE
+                    type: string
+                type: object
               targetClusterName:
                 description: ClusterName is the clusterName field of the target Hazelcast
-                  resource
+                  resource.
                 minLength: 1
                 type: string
             required:
