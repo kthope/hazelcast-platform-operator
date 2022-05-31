@@ -44,6 +44,7 @@ spec:
                     default: 60000
                     description: Timeout represents the time the source cluster waits
                       for the acknowledgement. After timeout, the events will be resent.
+                    format: int32
                     type: integer
                   type:
                     default: ACK_ON_OPERATION_COMPLETE
@@ -62,10 +63,12 @@ spec:
                     description: MaximumDelay represents the maximum delay in milliseconds.
                       If the batch size is not reached, the events will be sent after
                       the maximum delay.
+                    format: int32
                     type: integer
                   size:
                     default: 500
                     description: Size represents the maximum batch size.
+                    format: int32
                     type: integer
                 type: object
               endpoints:
@@ -83,6 +86,7 @@ spec:
                   capacity:
                     default: 10000
                     description: Capacity is the total capacity of WAN queue.
+                    format: int32
                     type: integer
                   fullBehavior:
                     default: DISCARD_AFTER_MUTATION
