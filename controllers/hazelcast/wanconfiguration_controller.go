@@ -116,6 +116,12 @@ func (r *WanConfigurationReconciler) getHazelcastClient(ctx context.Context, wan
 }
 
 func (r *WanConfigurationReconciler) applyWanConfiguration(ctx context.Context, client *hazelcast.Client, wan *hazelcastcomv1alpha1.WanConfiguration) error {
+	if ok, err := r.isInStore(ctx, wan); ok && err == nil {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
 	publisherName, err := r.saveToStore(ctx, wan)
 	if err != nil {
 		return err
@@ -178,12 +184,32 @@ func (r *WanConfigurationReconciler) saveToStore(ctx context.Context, wan *hazel
 		return "", err
 	}
 	publisherName := wan.Name + "-" + rand.String(16)
+	if cm.Data == nil {
+		cm.Data = make(map[string]string)
+	}
 	cm.Data[wan.Name] = publisherName
 	err := r.Client.Update(ctx, cm)
 	if err != nil {
 		return "", err
 	}
 	return publisherName, nil
+}
+
+func (r *WanConfigurationReconciler) isInStore(ctx context.Context, wan *hazelcastcomv1alpha1.WanConfiguration) (bool, error) {
+	cm := &corev1.ConfigMap{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "wan-store-for-" + wan.Spec.TargetClusterName + "-" + wan.Spec.MapResourceName,
+			Namespace: wan.GetNamespace(),
+		},
+	}
+	if err := util.CreateOrGet(ctx, r.Client, client.ObjectKeyFromObject(cm), cm); err != nil {
+		return false, err
+	}
+	if cm.Data == nil {
+		return false, nil
+	}
+	_, ok := cm.Data[wan.Name]
+	return ok, nil
 }
 
 func (r *WanConfigurationReconciler) deleteFromStore(ctx context.Context, wan *hazelcastcomv1alpha1.WanConfiguration) (string, error) {
