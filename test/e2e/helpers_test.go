@@ -15,6 +15,7 @@ import (
 	"strings"
 	. "time"
 
+	hzclienttypes "github.com/hazelcast/hazelcast-go-client/types"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	hzClient "github.com/hazelcast/hazelcast-go-client"
@@ -163,12 +164,25 @@ func FillTheMapData(ctx context.Context, lk types.NamespacedName, unisocket bool
 	By("using Hazelcast client")
 	m, err := clientHz.GetMap(ctx, mapName)
 	Expect(err).ToNot(HaveOccurred())
+	entries := make([]hzclienttypes.Entry, mapSize)
 	for i := 0; i < mapSize; i++ {
-		_, err = m.Put(ctx, strconv.Itoa(i), strconv.Itoa(i))
-		Expect(err).ToNot(HaveOccurred())
+		entries = append(entries, hzclienttypes.NewEntry(strconv.Itoa(i), strconv.Itoa(i)))
 	}
+	err = m.PutAll(ctx, entries...)
+	Expect(err).ToNot(HaveOccurred())
 	err = clientHz.Shutdown(ctx)
 	Expect(err).ToNot(HaveOccurred())
+}
+
+func waitForMapSize(ctx context.Context, lk types.NamespacedName, mapName string, mapSize int) {
+	var m *hzClient.Map
+	clientHz := GetHzClient(ctx, lk, true)
+	By("using Hazelcast client")
+	m, err := clientHz.GetMap(ctx, mapName)
+	Expect(err).ToNot(HaveOccurred())
+	Eventually(func() (int, error) {
+		return m.Size(ctx)
+	}).Should(Equal(mapSize))
 }
 
 func FillTheMapWithHugeData(ctx context.Context, mapName string, mapSizeInGb string, hzConfig *hazelcastcomv1alpha1.Hazelcast) {

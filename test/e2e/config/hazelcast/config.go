@@ -309,6 +309,20 @@ var (
 		}
 
 	}
+
+	DefaultWanConfiguration = func(wan types.NamespacedName, mapName, targetClusterName, endpoints string, lbls map[string]string) *hazelcastv1alpha1.WanConfiguration {
+		return &hazelcastv1alpha1.WanConfiguration{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      wan.Name,
+				Namespace: wan.Namespace,
+			},
+			Spec: hazelcastv1alpha1.WanConfigurationSpec{
+				MapResourceName:   mapName,
+				TargetClusterName: targetClusterName,
+				Endpoints:         endpoints,
+			},
+		}
+	}
 )
 
 func repo(ee bool) string {
