@@ -51,7 +51,7 @@ func (r *WanConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, err
 		}
 	}
-	ctx = context.WithValue(ctx, "logger", logger)
+	ctx = context.WithValue(ctx, LogKey("logger"), logger)
 
 	cli, err := r.getHazelcastClient(ctx, wan)
 	if err != nil {
@@ -127,7 +127,7 @@ func (r *WanConfigurationReconciler) applyWanConfiguration(ctx context.Context, 
 		convertAckType(wan.Spec.Acknowledgement.Type),
 		convertQueueBehavior(wan.Spec.Queue.FullBehavior),
 	}
-	_, err = addBatchPublisherConfig(ctx, client, req)
+	err = addBatchPublisherConfig(ctx, client, req)
 	if err != nil {
 		return fmt.Errorf("failed to apply WAN configuration: %w", err)
 	}
@@ -144,15 +144,6 @@ func (r *WanConfigurationReconciler) stopWanConfiguration(ctx context.Context, c
 		name:        hazelcastWanConfigurationName(wan.Spec.MapResourceName),
 		publisherId: publisherName,
 		state:       codecTypes.WanReplicationStateStopped,
-	}
-	return changeWanState(ctx, client, req)
-}
-
-func (r *WanConfigurationReconciler) resumeWanConfiguration(ctx context.Context, client *hazelcast.Client, wan *hazelcastcomv1alpha1.WanConfiguration) error {
-	req := &changeWanStateRequest{
-		name:        hazelcastWanConfigurationName(wan.Spec.MapResourceName),
-		publisherId: wan.Name,
-		state:       codecTypes.WanReplicationStateReplicating,
 	}
 	return changeWanState(ctx, client, req)
 }
@@ -238,16 +229,11 @@ type addBatchPublisherRequest struct {
 	queueFullBehavior     int32
 }
 
-type addBatchPublisherResponse struct {
-	added   []string
-	ignored []string
-}
-
 func addBatchPublisherConfig(
 	ctx context.Context,
 	client *hazelcast.Client,
 	request *addBatchPublisherRequest,
-) (*addBatchPublisherResponse, error) {
+) error {
 	cliInt := hazelcast.NewClientInternal(client)
 
 	req := codec.EncodeMCAddWanBatchPublisherConfigRequest(
@@ -264,13 +250,12 @@ func addBatchPublisherConfig(
 	)
 
 	for _, member := range cliInt.OrderedMembers() {
-		resp, err := cliInt.InvokeOnMember(ctx, req, member.UUID, nil)
+		_, err := cliInt.InvokeOnMember(ctx, req, member.UUID, nil)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		_, _ = codec.DecodeMCAddWanBatchPublisherConfigResponse(resp)
 	}
-	return &addBatchPublisherResponse{}, nil
+	return nil
 }
 
 type changeWanStateRequest struct {
@@ -320,3 +305,5 @@ func convertQueueBehavior(behavior hazelcastcomv1alpha1.FullBehaviorSetting) int
 		return -1
 	}
 }
+
+type LogKey string
