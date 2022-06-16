@@ -315,6 +315,7 @@ var (
 			ObjectMeta: v1.ObjectMeta{
 				Name:      wan.Name,
 				Namespace: wan.Namespace,
+				Labels:    lbls,
 			},
 			Spec: hazelcastv1alpha1.WanConfigurationSpec{
 				MapResourceName:   mapName,
