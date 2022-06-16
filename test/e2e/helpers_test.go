@@ -135,10 +135,19 @@ func GetHzClient(ctx context.Context, lk types.NamespacedName, unisocket bool) *
 		addr = s.Status.LoadBalancer.Ingress[0].Hostname
 	}
 	Expect(addr).Should(Not(BeEmpty()))
+
+	hz := &hazelcastcomv1alpha1.Hazelcast{}
+	Expect(k8sClient.Get(context.Background(), lk, hz)).Should(Succeed())
+	clusterName := "dev"
+	if len(hz.Spec.ClusterName) > 0 {
+		clusterName = hz.Spec.ClusterName
+	}
+
 	By("connecting Hazelcast client")
 	config := hzClient.Config{}
 	config.Cluster.Network.SetAddresses(fmt.Sprintf("%s:5701", addr))
 	config.Cluster.Unisocket = unisocket
+	config.Cluster.Name = clusterName
 	config.Cluster.Discovery.UsePublicIP = true
 	client, err := hzClient.StartNewClientWithConfig(ctx, config)
 	Expect(err).ToNot(HaveOccurred())
@@ -164,7 +173,7 @@ func FillTheMapData(ctx context.Context, lk types.NamespacedName, unisocket bool
 	By("using Hazelcast client")
 	m, err := clientHz.GetMap(ctx, mapName)
 	Expect(err).ToNot(HaveOccurred())
-	entries := make([]hzclienttypes.Entry, mapSize)
+	entries := make([]hzclienttypes.Entry, 0, mapSize)
 	for i := 0; i < mapSize; i++ {
 		entries = append(entries, hzclienttypes.NewEntry(strconv.Itoa(i), strconv.Itoa(i)))
 	}
@@ -182,7 +191,7 @@ func waitForMapSize(ctx context.Context, lk types.NamespacedName, mapName string
 	Expect(err).ToNot(HaveOccurred())
 	Eventually(func() (int, error) {
 		return m.Size(ctx)
-	}).Should(Equal(mapSize))
+	}, 2*Minute, interval).Should(Equal(mapSize))
 }
 
 func FillTheMapWithHugeData(ctx context.Context, mapName string, mapSizeInGb string, hzConfig *hazelcastcomv1alpha1.Hazelcast) {
