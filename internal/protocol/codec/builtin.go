@@ -7,6 +7,7 @@ import (
 
 	iserialization "github.com/hazelcast/hazelcast-go-client"
 	proto "github.com/hazelcast/hazelcast-go-client"
+	"github.com/hazelcast/hazelcast-go-client/types"
 )
 
 // Encoder for ClientMessage and value
@@ -242,4 +243,69 @@ func DecodeListMultiFrame(frameIterator *proto.ForwardFrameIterator, decoder fun
 		decoder(frameIterator)
 	}
 	frameIterator.Next()
+}
+
+type fixSizedTypesCodec struct{}
+
+var FixSizedTypesCodec fixSizedTypesCodec
+
+func (fixSizedTypesCodec) EncodeInt(buffer []byte, offset, value int32) {
+	binary.LittleEndian.PutUint32(buffer[offset:], uint32(value))
+}
+
+func (fixSizedTypesCodec) DecodeInt(buffer []byte, offset int32) int32 {
+	return int32(binary.LittleEndian.Uint32(buffer[offset:]))
+}
+
+func (fixSizedTypesCodec) EncodeLong(buffer []byte, offset int32, value int64) {
+	binary.LittleEndian.PutUint64(buffer[offset:], uint64(value))
+}
+
+func (fixSizedTypesCodec) DecodeLong(buffer []byte, offset int32) int64 {
+	return int64(binary.LittleEndian.Uint64(buffer[offset:]))
+}
+
+func (fixSizedTypesCodec) EncodeBoolean(buffer []byte, offset int32, value bool) {
+	if value {
+		buffer[offset] = 1
+	} else {
+		buffer[offset] = 0
+	}
+}
+
+func (fixSizedTypesCodec) DecodeBoolean(buffer []byte, offset int32) bool {
+	return buffer[offset] == 1
+}
+
+func (fixSizedTypesCodec) EncodeByte(buffer []byte, offset int32, value byte) {
+	buffer[offset] = value
+}
+
+func (fixSizedTypesCodec) DecodeByte(buffer []byte, offset int32) byte {
+	return buffer[offset]
+}
+
+func (fixSizedTypesCodec) EncodeUUID(buffer []byte, offset int32, uuid types.UUID) {
+	isNullEncode := uuid.Default()
+	FixSizedTypesCodec.EncodeBoolean(buffer, offset, isNullEncode)
+	if isNullEncode {
+		return
+	}
+	bufferOffset := offset + proto.BooleanSizeInBytes
+	FixSizedTypesCodec.EncodeLong(buffer, bufferOffset, int64(uuid.MostSignificantBits()))
+	FixSizedTypesCodec.EncodeLong(buffer, bufferOffset+proto.LongSizeInBytes, int64(uuid.LeastSignificantBits()))
+}
+
+func (fixSizedTypesCodec) DecodeUUID(buffer []byte, offset int32) types.UUID {
+	isNull := FixSizedTypesCodec.DecodeBoolean(buffer, offset)
+	if isNull {
+		return types.UUID{}
+	}
+
+	mostSignificantOffset := offset + proto.BooleanSizeInBytes
+	leastSignificantOffset := mostSignificantOffset + proto.LongSizeInBytes
+	mostSignificant := uint64(FixSizedTypesCodec.DecodeLong(buffer, mostSignificantOffset))
+	leastSignificant := uint64(FixSizedTypesCodec.DecodeLong(buffer, leastSignificantOffset))
+
+	return types.NewUUIDWith(mostSignificant, leastSignificant)
 }
