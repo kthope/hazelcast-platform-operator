@@ -38,11 +38,12 @@ jobs:
           sleep 30
 
   new-relic-setup:
-    name: Set New Relic agent
+    name: Setup New Relic agent
     needs: [create-gke-cluster]
     env:
       NR_CLUSTER_NAME: gke-operator
       CLUSTER_NAME: ${{ needs.create-gke-cluster.outputs.CLUSTER_NAME }}
+      NAMESPACE: newrelic
     runs-on: ubuntu-20.04
     steps:
       - name: Install kubectl
@@ -146,8 +147,9 @@ jobs:
 
       - name: Install New Relic agent
         run: |
-          helm install --namespace=newrelic newrelic-bundle -f newrelic-values.yaml newrelic/nri-bundle
-          kubectl get configmap -n newrelic newrelic-bundle-newrelic-logging-fluent-bit-config -o yaml
+          kubectl create namespace ${{ env.NAMESPACE }}
+          helm install --namespace=${{ env.NAMESPACE }} newrelic-bundle -f newrelic-values.yaml newrelic/nri-bundle
+          kubectl get configmap -n ${{ env.NAMESPACE }} newrelic-bundle-newrelic-logging-fluent-bit-config -o yaml
 
 
   gke-e2e-tests:
