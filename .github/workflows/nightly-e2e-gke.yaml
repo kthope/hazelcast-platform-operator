@@ -37,10 +37,123 @@ jobs:
             --num-nodes=2
           sleep 30
 
+  new-relic-set-up:
+    name: Set New Relic agent
+    needs: [create-gke-cluster]
+    env:
+      NR_CLUSTER_NAME: gke-operator
+      CLUSTER_NAME: ${{ needs.create-gke-cluster.outputs.CLUSTER_NAME }}
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Install kubectl
+        run: |
+          mkdir -p ${GITHUB_WORKSPACE}/bin
+          echo "${GITHUB_WORKSPACE}/bin" >> ${GITHUB_PATH}
+          curl -L https://dl.k8s.io/release/v${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl \
+          -o ${GITHUB_WORKSPACE}/bin/kubectl
+          chmod +x ${GITHUB_WORKSPACE}/bin/kubectl
+
+      - name: Authenticate to GCP
+        uses: "google-github-actions/auth@v0.7.0"
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v0.6.0
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Connect to the GKE cluster
+        run: |
+          gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
+            --zone ${{ env.GKE_ZONE }} --project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Install helm and New Relic repo
+        run: |
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+          chmod 700 get_helm.sh
+          ./get_helm.sh
+          helm repo add newrelic https://helm-charts.newrelic.com
+
+      - name: Create helm values file
+        run: |
+          echo "
+          global:
+            # -- The cluster name for the Kubernetes cluster.
+            cluster: ${{ env.NR_CLUSTER_NAME }}
+          
+            # -- The license key for your New Relic Account. This will be preferred configuration option if both `licenseKey` and `customSecret` are specified.
+            licenseKey: ${{ secrets.NEW_RELIC_LICENCE_KEY }}
+          newrelic-infrastructure:
+            enabled: true
+        
+          nri-prometheus:
+            enabled: false
+          
+          nri-metadata-injection:
+            enabled: true
+          
+          kube-state-metrics:
+            enabled: false
+            collectors:
+              certificatesigningrequests: false
+              ingresses: false
+          
+          nri-kube-events:
+            enabled: true
+          
+          newrelic-logging:
+            enabled: true
+            fluentBit:
+              config:
+                filters: |
+                  [FILTER]
+                      Name                kubernetes
+                      Match               kube.*
+                      # We need the full DNS suffix as Windows only supports resolving names with this suffix
+                      # See: https://kubernetes.io/docs/setup/production-environment/windows/intro-windows-in-kubernetes/#dns-limitations
+                      Kube_URL            https://kubernetes.default.svc.cluster.local:443
+                      Buffer_Size         \${K8S_BUFFER_SIZE}
+                      K8S-Logging.Exclude \${K8S_LOGGING_EXCLUDE}
+                  [FILTER]
+                      Name           record_modifier
+                      Match          *
+                      Record         cluster_name \${CLUSTER_NAME}
+                  [FILTER]
+                      Name           modify
+                      Match          *
+                      Add            k8s_cluster_name ${{ env.CLUSTER_NAME }}
+                      Add            gh_run_id ${{ env.GITHUB_RUN_ID }}
+                      Add            gh_run_number ${{ env.GITHUB_RUN_NUMBER }}
+                      Add            commit_sha ${{ env.GITHUB_SHA }}
+          
+          newrelic-pixie:
+            # newrelic-pixie.enabled -- Install the [`newrelic-pixie`](https://github.com/newrelic/helm-charts/tree/master/charts/newrelic-pixie)
+            enabled: false
+          
+          pixie-chart:
+            # pixie-chart.enabled -- Install the [`pixie-chart` chart](https://docs.pixielabs.ai/installing-pixie/install-schemes/helm/#3.-deploy)
+            enabled: false
+          
+          newrelic-infra-operator:
+            # newrelic-infra-operator.enabled -- Install the [`newrelic-infra-operator` chart](https://github.com/newrelic/newrelic-infra-operator/tree/main/charts/newrelic-infra-operator) (Beta)
+            enabled: false
+          
+          newrelic-k8s-metrics-adapter:
+            # newrelic-k8s-metrics-adapter.enabled -- Install the [`newrelic-k8s-metrics-adapter.` chart](https://github.com/newrelic/newrelic-k8s-metrics-adapter/tree/main/charts/newrelic-k8s-metrics-adapter) (Beta)
+            enabled: false
+          " > newrelic-values.yaml
+
+      - name: Install New Relic agent
+        run: |
+          helm install --namespace=newrelic newrelic-bundle -f newrelic-values.yaml newrelic/nri-bundle
+          kubectl get configmap -n newrelic newrelic-bundle-newrelic-logging-fluent-bit-config -o yaml
+
+
   gke-e2e-tests:
     name: Run E2E tests
     runs-on: ubuntu-20.04
-    needs: [create-gke-cluster]
+    needs: [create-gke-cluster, new-relic-install]
     strategy:
       fail-fast: false
       matrix:
