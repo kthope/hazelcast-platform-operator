@@ -31,7 +31,6 @@ jobs:
     needs: "prepare-env"
     env:
       NR_CLUSTER_NAME: gke-operator
-      CLUSTER_NAME: ${{ needs.create-gke-cluster.outputs.CLUSTER_NAME }}
       KUBECTL_VERSION: 1.22.0
     runs-on: ubuntu-20.04
     steps:
