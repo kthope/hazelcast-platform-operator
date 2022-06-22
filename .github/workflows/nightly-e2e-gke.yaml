@@ -86,8 +86,8 @@ jobs:
             --set "global.cluster=gke-operator" \
             --set "global.licenseKey=${{ secrets.NEW_RELIC_LICENCE_KEY }}" \
             --set "newrelic-logging.fluentBit.additionalEnvVariables[0].name=K_CLUSTER_NAME,newrelic-logging.fluentBit.additionalEnvVariables[0].value=${{ env.CLUSTER_NAME }}" \
-            --set "newrelic-logging.fluentBit.additionalEnvVariables[1].name=GITHUB_RUN_ID,newrelic-logging.fluentBit.additionalEnvVariables[1].value=${{ github.run_id }}" \
-            --set "newrelic-logging.fluentBit.additionalEnvVariables[2].name=GITHUB_RUN_NUMBER,newrelic-logging.fluentBit.additionalEnvVariables[2].value=${{ github.run_number }}" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[1].name=GITHUB_RUN_ID,newrelic-logging.fluentBit.additionalEnvVariables[1].value=\"${{ github.run_id }}\"" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[2].name=GITHUB_RUN_NUMBER,newrelic-logging.fluentBit.additionalEnvVariables[2].value=\"${{ github.run_number }}\"" \
             --set "newrelic-logging.fluentBit.additionalEnvVariables[3].name=GITHUB_SHA,newrelic-logging.fluentBit.additionalEnvVariables[3].value=${{ github.sha }}" \
             newrelic/nri-bundle
           kubectl get configmap -n newrelic newrelic-bundle-newrelic-logging-fluent-bit-config -o yaml
