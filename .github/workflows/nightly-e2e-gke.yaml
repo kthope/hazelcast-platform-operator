@@ -46,6 +46,9 @@ jobs:
       KUBECTL_VERSION: 1.22.0
     runs-on: ubuntu-20.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
       - name: Install kubectl
         run: |
           mkdir -p ${GITHUB_WORKSPACE}/bin
@@ -76,73 +79,15 @@ jobs:
           ./get_helm.sh
           helm repo add newrelic https://helm-charts.newrelic.com
 
-      - name: Create helm values file
-        run: |
-          echo "
-          global:
-            cluster: ${{ env.NR_CLUSTER_NAME }}
-            licenseKey: ${{ secrets.NEW_RELIC_LICENCE_KEY }}
-          newrelic-infrastructure:
-            enabled: true
-        
-          nri-prometheus:
-            enabled: false
-          
-          nri-metadata-injection:
-            enabled: true
-          
-          kube-state-metrics:
-            enabled: false
-            collectors:
-              certificatesigningrequests: false
-              ingresses: false
-          
-          nri-kube-events:
-            enabled: true
-          
-          newrelic-logging:
-            enabled: true
-            fluentBit:
-              config:
-                filters: |
-                  [FILTER]
-                      Name                kubernetes
-                      Match               kube.*
-                      # We need the full DNS suffix as Windows only supports resolving names with this suffix
-                      # See: https://kubernetes.io/docs/setup/production-environment/windows/intro-windows-in-kubernetes/#dns-limitations
-                      Kube_URL            https://kubernetes.default.svc.cluster.local:443
-                      Buffer_Size         \${K8S_BUFFER_SIZE}
-                      K8S-Logging.Exclude \${K8S_LOGGING_EXCLUDE}
-                  [FILTER]
-                      Name           record_modifier
-                      Match          *
-                      Record         cluster_name \${CLUSTER_NAME}
-                  [FILTER]
-                      Name           modify
-                      Match          *
-                      Add            k8s_cluster_name ${{ env.CLUSTER_NAME }}
-                      Add            gh_run_id ${{ env.GITHUB_RUN_ID }}
-                      Add            gh_run_number ${{ env.GITHUB_RUN_NUMBER }}
-                      Add            commit_sha ${{ env.GITHUB_SHA }}
-          
-          newrelic-pixie:
-            enabled: false
-          
-          pixie-chart:
-            enabled: false
-          
-          newrelic-infra-operator:
-            enabled: false
-          
-          newrelic-k8s-metrics-adapter:
-            enabled: false
-          " > newrelic-values.yaml
-          cat newrelic-values.yaml
-
       - name: Install New Relic agent
         run: |
           kubectl create namespace newrelic
-          helm install --namespace=newrelic newrelic-bundle -f newrelic-values.yaml newrelic/nri-bundle
+          helm install --namespace=newrelic newrelic-bundle -f .github/newrelic/newrelic-values.yaml \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[0].name=K_CLUSTER_NAME,newrelic-logging.fluentBit.additionalEnvVariables[0].value=${{ env.CLUSTER_NAME }}" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[1].name=GITHUB_RUN_ID,newrelic-logging.fluentBit.additionalEnvVariables[1].value=${{ env.GITHUB_RUN_ID }}" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[2].name=GITHUB_RUN_NUMBER,newrelic-logging.fluentBit.additionalEnvVariables[2].value=${{ env.GITHUB_RUN_NUMBER }}" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[3].name=GITHUB_SHA,newrelic-logging.fluentBit.additionalEnvVariables[3].value=${{ env.GITHUB_SHA }}" \
+            newrelic/nri-bundle
           kubectl get configmap -n newrelic newrelic-bundle-newrelic-logging-fluent-bit-config -o yaml
 
 
