@@ -26,10 +26,61 @@ jobs:
             az aks create --resource-group ${AZURE_RESOURCE_GROUP} --name "${CLUSTER_NAME}" \
               --node-count 2 --generate-ssh-keys
 
+  new-relic-setup:
+    name: Setup New Relic agent
+    needs: "prepare-env"
+    env:
+      NR_CLUSTER_NAME: gke-operator
+      CLUSTER_NAME: ${{ needs.create-gke-cluster.outputs.CLUSTER_NAME }}
+      KUBECTL_VERSION: 1.22.0
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install kubectl
+        run: |
+          mkdir -p ${GITHUB_WORKSPACE}/bin
+          echo "${GITHUB_WORKSPACE}/bin" >> ${GITHUB_PATH}
+          curl -L https://dl.k8s.io/release/v${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl \
+          -o ${GITHUB_WORKSPACE}/bin/kubectl
+          chmod +x ${GITHUB_WORKSPACE}/bin/kubectl
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Update kubeconfig
+        run: |-
+          CLUSTER_NAME="operator-e2e-test-${GITHUB_SHA::8}-${GITHUB_RUN_NUMBER}"
+          az aks get-credentials --resource-group "${AZURE_RESOURCE_GROUP}" --name "${CLUSTER_NAME}"
+
+      - name: Install helm and New Relic repo
+        run: |
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+          chmod 700 get_helm.sh
+          ./get_helm.sh
+          helm repo add newrelic https://helm-charts.newrelic.com
+
+      - name: Install New Relic agent
+        run: |
+          CLUSTER_NAME="operator-e2e-test-${GITHUB_SHA::8}-${GITHUB_RUN_NUMBER}"
+          kubectl create namespace newrelic
+          helm install --namespace=newrelic newrelic-bundle -f .github/newrelic/newrelic-values.yaml \
+            --set "global.cluster=azure-operator" \
+            --set "global.licenseKey=${{ secrets.NEW_RELIC_LICENCE_KEY }}" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[0].name=K_CLUSTER_NAME,newrelic-logging.fluentBit.additionalEnvVariables[0].value=${{ env.CLUSTER_NAME }}" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[1].name=GITHUB_RUN_ID,newrelic-logging.fluentBit.additionalEnvVariables[1].value=\"${{ github.run_id }}\"" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[2].name=GITHUB_RUN_NUMBER,newrelic-logging.fluentBit.additionalEnvVariables[2].value=\"${{ github.run_number }}\"" \
+            --set "newrelic-logging.fluentBit.additionalEnvVariables[3].name=GITHUB_SHA,newrelic-logging.fluentBit.additionalEnvVariables[3].value=${{ github.sha }}" \
+            newrelic/nri-bundle
+          kubectl get configmap -n newrelic newrelic-bundle-newrelic-logging-fluent-bit-config -o yaml
+
   aks-e2e-tests:
     name: Run e2e test on AKS
     runs-on: ubuntu-20.04
-    needs: "prepare-env"
+    needs: ["prepare-env", "new-relic-setup"]
     defaults:
       run:
         shell: bash
