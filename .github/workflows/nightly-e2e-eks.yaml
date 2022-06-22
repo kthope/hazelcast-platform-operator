@@ -90,7 +90,6 @@ jobs:
             --set "newrelic-logging.fluentBit.additionalEnvVariables[2].name=GITHUB_RUN_NUMBER,newrelic-logging.fluentBit.additionalEnvVariables[2].value=\"${{ github.run_number }}\"" \
             --set "newrelic-logging.fluentBit.additionalEnvVariables[3].name=GITHUB_SHA,newrelic-logging.fluentBit.additionalEnvVariables[3].value=${{ github.sha }}" \
             newrelic/nri-bundle
-          kubectl get configmap -n newrelic newrelic-bundle-newrelic-logging-fluent-bit-config -o yaml
 
   eks-e2e-tests:
     name: Run e2e test on EKS
