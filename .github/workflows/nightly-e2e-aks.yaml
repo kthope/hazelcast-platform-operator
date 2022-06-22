@@ -23,6 +23,7 @@ jobs:
           azcliversion: 2.31.0
           inlineScript: |
             CLUSTER_NAME="operator-e2e-test-${GITHUB_SHA::8}-${GITHUB_RUN_NUMBER}"
+            echo "::set-output name=CLUSTER_NAME::${CLUSTER_NAME}"
             az aks create --resource-group ${AZURE_RESOURCE_GROUP} --name "${CLUSTER_NAME}" \
               --node-count 2 --generate-ssh-keys
 
@@ -32,6 +33,7 @@ jobs:
     env:
       NR_CLUSTER_NAME: gke-operator
       KUBECTL_VERSION: 1.22.0
+      CLUSTER_NAME: ${{ needs.prepare-env.outputs.CLUSTER_NAME }}
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
@@ -52,7 +54,6 @@ jobs:
 
       - name: Update kubeconfig
         run: |-
-          CLUSTER_NAME="operator-e2e-test-${GITHUB_SHA::8}-${GITHUB_RUN_NUMBER}"
           az aks get-credentials --resource-group "${AZURE_RESOURCE_GROUP}" --name "${CLUSTER_NAME}"
 
       - name: Install helm and New Relic repo
