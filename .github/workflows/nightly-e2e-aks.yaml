@@ -11,6 +11,8 @@ jobs:
   prepare-env:
     name: Create AKS cluster
     runs-on: ubuntu-20.04
+    outputs:
+      CLUSTER_NAME: ${{ steps.create-cluster.outputs.CLUSTER_NAME }}
     steps:
       - name: Azure login
         uses: azure/login@v1
@@ -18,6 +20,7 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Create AKS cluster
+        id: create-cluster
         uses: azure/CLI@v1
         with:
           azcliversion: 2.31.0
@@ -54,7 +57,7 @@ jobs:
 
       - name: Update kubeconfig
         run: |-
-          az aks get-credentials --resource-group "${AZURE_RESOURCE_GROUP}" --name "${CLUSTER_NAME}"
+          az aks get-credentials --resource-group "${AZURE_RESOURCE_GROUP}" --name "${{ env.CLUSTER_NAME }}"
 
       - name: Install helm and New Relic repo
         run: |
@@ -65,7 +68,6 @@ jobs:
 
       - name: Install New Relic agent
         run: |
-          CLUSTER_NAME="operator-e2e-test-${GITHUB_SHA::8}-${GITHUB_RUN_NUMBER}"
           kubectl create namespace newrelic
           helm install --namespace=newrelic newrelic-bundle -f .github/newrelic/newrelic-values.yaml \
             --set "global.cluster=azure-operator" \
