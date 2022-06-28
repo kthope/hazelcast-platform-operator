@@ -3,16 +3,18 @@ package managementcenter
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"math/rand"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"time"
 
 	hazelcastv1alpha1 "github.com/hazelcast/hazelcast-platform-operator/api/v1alpha1"
 	n "github.com/hazelcast/hazelcast-platform-operator/internal/naming"
@@ -28,6 +30,12 @@ const (
 	mcInitCmd = "MC_INIT_CMD"
 	javaOpts  = "JAVA_OPTS"
 )
+
+type McAdmin struct {
+	Username string `json:"username,omitempty"`
+	Password string `json:"-"`
+	Token    string `json:"token,omitempty"`
+}
 
 func (r *ManagementCenterReconciler) addFinalizer(ctx context.Context, mc *hazelcastv1alpha1.ManagementCenter, logger logr.Logger) error {
 	if !controllerutil.ContainsFinalizer(mc, n.Finalizer) && mc.GetDeletionTimestamp() == nil {
@@ -177,6 +185,7 @@ func metadata(mc *hazelcastv1alpha1.ManagementCenter) metav1.ObjectMeta {
 		Labels:    labels(mc),
 	}
 }
+
 func labels(mc *hazelcastv1alpha1.ManagementCenter) map[string]string {
 	return map[string]string{
 		n.ApplicationNameLabel:         n.ManagementCenter,
@@ -190,13 +199,13 @@ func ports() []v1.ServicePort {
 		{
 			Name:       "http",
 			Protocol:   corev1.ProtocolTCP,
-			Port:       8080,
+			Port:       n.DefaultMcPort,
 			TargetPort: intstr.FromString(n.Mancenter),
 		},
 		{
 			Name:       "https",
 			Protocol:   corev1.ProtocolTCP,
-			Port:       443,
+			Port:       n.McHttpsPort,
 			TargetPort: intstr.FromString(n.Mancenter),
 		},
 	}
@@ -288,10 +297,14 @@ func (r *ManagementCenterReconciler) reconcileStatefulset(ctx context.Context, m
 		}
 	}
 
+	mcAdmin, err := checkAdminCreated(ctx, r.Client, mc)
+	if err != nil {
+		return err
+	}
 	opResult, err := util.CreateOrUpdate(ctx, r.Client, sts, func() error {
 		sts.Spec.Template.Spec.ImagePullSecrets = mc.Spec.ImagePullSecrets
 		sts.Spec.Template.Spec.Containers[0].Image = mc.DockerImage()
-		sts.Spec.Template.Spec.Containers[0].Env = env(mc)
+		sts.Spec.Template.Spec.Containers[0].Env = env(mc, mcAdmin)
 		sts.Spec.Template.Spec.Containers[0].ImagePullPolicy = mc.Spec.ImagePullPolicy
 		if mc.Spec.Scheduling != nil {
 			sts.Spec.Template.Spec.Affinity = mc.Spec.Scheduling.Affinity
@@ -355,8 +368,12 @@ func existingVolumeClaim(claimName string) v1.Volume {
 	}
 }
 
-func env(mc *hazelcastv1alpha1.ManagementCenter) []v1.EnvVar {
-	envs := []v1.EnvVar{{Name: mcInitCmd, Value: clusterAddCommand(mc)}}
+func env(mc *hazelcastv1alpha1.ManagementCenter, mcAdmin *McAdmin) []v1.EnvVar {
+	var envs []v1.EnvVar
+
+	if mcAdmin != nil {
+		envs = []v1.EnvVar{{Name: mcInitCmd, Value: createAdminCommand(mcAdmin)}}
+	}
 
 	if mc.Spec.LicenseKeySecret != "" {
 		envs = append(envs,
@@ -373,11 +390,12 @@ func env(mc *hazelcastv1alpha1.ManagementCenter) []v1.EnvVar {
 			},
 			v1.EnvVar{
 				Name: javaOpts,
-				Value: fmt.Sprintf("-Dhazelcast.mc.license=$(MC_LICENSE_KEY) -Dhazelcast.mc.healthCheck.enable=true"+
+				Value: fmt.Sprintf("-Dhazelcast.mc.license=$(MC_LICENSE_KEY) -Dhazelcast.mc.healthCheck.enable=true -Dhazelcast.mc.rest.enabled=true"+
 					" -Dhazelcast.mc.tls.enabled=false -Dmancenter.ssl=false -Dhazelcast.mc.phone.home.enabled=%t", util.IsPhoneHomeEnabled()),
 			},
 		)
 	} else {
+		// TODO: Without licence key rest api wont work
 		envs = append(envs,
 			v1.EnvVar{
 				Name: javaOpts,
@@ -389,11 +407,55 @@ func env(mc *hazelcastv1alpha1.ManagementCenter) []v1.EnvVar {
 	return envs
 }
 
-func clusterAddCommand(mc *hazelcastv1alpha1.ManagementCenter) string {
-	clusters := mc.Spec.HazelcastClusters
-	strs := make([]string, len(clusters))
-	for i, cluster := range clusters {
-		strs[i] = fmt.Sprintf("./bin/mc-conf.sh cluster add --lenient=true -H /data -cn %s -ma %s", cluster.Name, cluster.Address)
+func checkAdminCreated(ctx context.Context, c client.Client, mc *hazelcastv1alpha1.ManagementCenter) (*McAdmin, error) {
+	namespacedName := types.NamespacedName{Name: mc.Name, Namespace: mc.Namespace}
+	adminSecret := &corev1.Secret{}
+
+	if err := c.Get(ctx, namespacedName, adminSecret); err != nil {
+		password := generatePassword()
+		adminSecret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      mc.Name,
+				Namespace: mc.Namespace,
+			},
+			Data: map[string][]byte{
+				"username": []byte(mc.Name),
+				"password": password,
+			},
+		}
+
+		if err = c.Create(ctx, adminSecret); err != nil {
+			return nil, fmt.Errorf("failed to creat mc admin credential secret: %w", err)
+		}
+		return &McAdmin{Username: mc.Name, Password: string(password)}, nil
 	}
-	return strings.Join(strs, " && ")
+	return &McAdmin{Username: mc.Name, Password: string(adminSecret.Data["password"])}, nil
+}
+
+func createAdminCommand(mcAdmin *McAdmin) string {
+	return fmt.Sprintf("./bin/mc-conf.sh user create --lenient=true -r admin -n %s -p='%s'", mcAdmin.Username, mcAdmin.Password)
+}
+
+func generatePassword() []byte {
+	const (
+		charSet        = "abcdedfghijklmnopqrstABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		specialCharSet = "!@#$%&*"
+		numberSet      = "0123456789"
+		allCharSet     = charSet + specialCharSet + numberSet
+	)
+	rand.Seed(time.Now().UnixNano())
+	passwordByte := make([]byte, 8)
+
+	passwordByte[0] = specialCharSet[rand.Intn(len(specialCharSet))]
+	passwordByte[1] = numberSet[rand.Intn(len(numberSet))]
+	passwordByte[2] = charSet[rand.Intn(len(charSet))]
+
+	for i := 3; i < 8; i++ {
+		passwordByte[i] = allCharSet[rand.Intn(len(allCharSet))]
+	}
+
+	rand.Shuffle(len(passwordByte), func(i, j int) {
+		passwordByte[i], passwordByte[j] = passwordByte[j], passwordByte[i]
+	})
+	return passwordByte
 }

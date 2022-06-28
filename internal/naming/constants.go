@@ -94,6 +94,10 @@ const (
 
 // Management Center default configurations
 const (
+	// DefaultMcPort ManagementCenter default port
+	DefaultMcPort = 8080
+	// McHttpsPort ManagementCenter https port
+	McHttpsPort = 443
 	// MCRepo image repository for Management Center
 	MCRepo = "docker.io/hazelcast/management-center"
 	// MCVersion version of Management Center image

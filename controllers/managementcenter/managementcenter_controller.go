@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -44,7 +45,7 @@ func NewManagementCenterReconciler(c client.Client, log logr.Logger, s *runtime.
 //+kubebuilder:rbac:groups=hazelcast.com,resources=managementcenters/status,verbs=get;update;patch,namespace=system
 //+kubebuilder:rbac:groups=hazelcast.com,resources=managementcenters/finalizers,verbs=update,namespace=system
 // Role related to Reconcile()
-//+kubebuilder:rbac:groups="",resources=events;services;serviceaccounts;pods,verbs=get;list;watch;create;update;patch;delete,namespace=system
+//+kubebuilder:rbac:groups="",resources=events;services;serviceaccounts;pods;secrets,verbs=get;list;watch;create;update;patch;delete,namespace=system
 //+kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete,namespace=system
 //+kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=roles;rolebindings,verbs=get;list;watch;create;update;patch;delete,namespace=system
 
@@ -122,6 +123,10 @@ func (r *ManagementCenterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
+	if err = r.updateHazelcastClusters(ctx, mc); err != nil {
+		return update(ctx, r.Client, mc, failedPhase(err))
+	}
+
 	if util.IsPhoneHomeEnabled() {
 		firstDeployment := r.metrics.MCMetrics[mc.UID].FillAfterDeployment(mc)
 		if firstDeployment {
@@ -164,4 +169,71 @@ func (r *ManagementCenterReconciler) updateLastSuccessfulConfiguration(ctx conte
 		logger.Info("Operation result", "Management Center Annotation", h.Name, "result", opResult)
 	}
 	return err
+}
+
+func (r *ManagementCenterReconciler) updateHazelcastClusters(ctx context.Context, mc *hazelcastv1alpha1.ManagementCenter) error {
+	mcAdmin, err := checkToken(ctx, r.Client, mc)
+	if err != nil {
+		return err
+	}
+	rest := NewRestClient(mc, mcAdmin)
+
+	if mcAdmin.Token == "" {
+		token, err := rest.CreateToken(ctx)
+		if err != nil {
+			return err
+		}
+		if err = saveToken(ctx, r.Client, mc, token); err != nil {
+			return err
+		}
+	}
+
+	existMembers := make(map[string]struct{}, len(mc.Spec.HazelcastClusters))
+
+	for _, cluster := range mc.Spec.HazelcastClusters {
+		if err := rest.CreateUpdateHzCluster(ctx, &HzClusters{cluster.Name, []string{cluster.Address}}); err != nil {
+			return err
+		}
+		existMembers[cluster.Name] = struct{}{}
+	}
+
+	hzClusters, err := rest.GetHzClusters(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, cluster := range hzClusters {
+		_, ok := existMembers[cluster.ClusterName]
+		if ok {
+			continue
+		}
+		if err := rest.DeleteHzCluster(ctx, cluster.ClusterName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkToken(ctx context.Context, c client.Client, mc *hazelcastv1alpha1.ManagementCenter) (*McAdmin, error) {
+	namespacedName := types.NamespacedName{Name: mc.Name, Namespace: mc.Namespace}
+	adminSecret := &corev1.Secret{}
+
+	if err := c.Get(ctx, namespacedName, adminSecret); err != nil {
+		return nil, err
+	}
+	return &McAdmin{string(adminSecret.Data["username"]), string(adminSecret.Data["password"]), string(adminSecret.Data["token"])}, nil
+}
+
+func saveToken(ctx context.Context, c client.Client, mc *hazelcastv1alpha1.ManagementCenter, token string) error {
+	namespacedName := types.NamespacedName{Name: mc.Name, Namespace: mc.Namespace}
+	adminSecret := &corev1.Secret{}
+
+	if err := c.Get(ctx, namespacedName, adminSecret); err != nil {
+		return err
+	}
+	adminSecret.Data["token"] = []byte(token)
+	if err := c.Update(ctx, adminSecret); err != nil {
+		return err
+	}
+	return nil
 }
