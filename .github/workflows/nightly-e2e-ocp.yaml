@@ -95,7 +95,7 @@ jobs:
     if: always() &&  needs.ocp-e2e-tests.result != 'success' 
     runs-on: ubuntu-latest
     steps:
-      - uses: 8398a7/action-slack@f3635935f58910a6d6951b73efe9037c960c8c04
+      - uses: 8398a7/action-slack@a74b761b4089b5d730d813fbedcd2ec5d394f3af
         with:
           fields: repo,commit,author,action,eventName,workflow
           status: failure
