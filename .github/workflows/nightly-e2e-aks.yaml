@@ -220,6 +220,6 @@ jobs:
         with:
           fields: repo,commit,author,action,eventName,workflow
           status: failure
-          channel: "#github-actions-log"
+          channel: "#github-logs"
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
