@@ -44,7 +44,7 @@ var _ = Describe("Hazelcast CR with Persistence feature enabled", Label("hz_pers
 		assertDoesNotExist(hzLookupKey, &hazelcastcomv1alpha1.Hazelcast{})
 	})
 
-	It("should enable persistence for members successfully", Label("fast"), func() {
+	It("should enable persistence for members successfully", FlakeAttempts(2), Label("fast"), func() {
 		if !ee {
 			Skip("This test will only run in EE configuration")
 		}
@@ -223,8 +223,8 @@ var _ = Describe("Hazelcast CR with Persistence feature enabled", Label("hz_pers
 		))
 	},
 		Entry("with PVC configuration", Label("slow")),
-		Entry("with HostPath configuration single node", Label("slow"), "/tmp/hazelcast/singleNode", "dummyNodeName"),
-		Entry("with HostPath configuration multiple nodes", Label("slow"), "/tmp/hazelcast/multiNode"),
+		Entry("with HostPath configuration single node", FlakeAttempts(2), Label("slow"), "/tmp/hazelcast/singleNode", "dummyNodeName"),
+		Entry("with HostPath configuration multiple nodes", FlakeAttempts(2), Label("slow"), "/tmp/hazelcast/multiNode"),
 	)
 
 	DescribeTable("Should successfully restore from external backup", func(bucketURI, secretName string) {
@@ -232,7 +232,7 @@ var _ = Describe("Hazelcast CR with Persistence feature enabled", Label("hz_pers
 			Skip("This test will only run in EE configuration")
 		}
 		setLabelAndCRName("hp-5")
-		
+
 		By("Create cluster with external backup enabled")
 		hazelcast := hazelcastconfig.ExternalBackup(hzLookupKey, true, labels)
 		CreateHazelcastCR(hazelcast)
@@ -272,9 +272,9 @@ var _ = Describe("Hazelcast CR with Persistence feature enabled", Label("hz_pers
 		test.EventuallyInLogs(scanner, 10*Second, logInterval).Should(ContainSubstring("Found existing hot-restart directory"))
 		test.EventuallyInLogs(scanner, 10*Second, logInterval).Should(ContainSubstring("Local Hot Restart procedure completed with success."))
 	},
-		Entry("using AWS S3 bucket", Label("slow"), "s3://operator-e2e-external-backup", "br-secret-s3"),
-		Entry("using GCP bucket", Label("slow"), "gs://operator-e2e-external-backup", "br-secret-gcp"),
-		Entry("using Azure bucket", Label("slow"), "azblob://operator-e2e-external-backup", "br-secret-az"),
+		Entry("using AWS S3 bucket", FlakeAttempts(2), Label("slow"), "s3://operator-e2e-external-backup", "br-secret-s3"),
+		Entry("using GCP bucket", FlakeAttempts(2), Label("slow"), "gs://operator-e2e-external-backup", "br-secret-gcp"),
+		Entry("using Azure bucket", FlakeAttempts(2), Label("slow"), "azblob://operator-e2e-external-backup", "br-secret-az"),
 	)
 })
 

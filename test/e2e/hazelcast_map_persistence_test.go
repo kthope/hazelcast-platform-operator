@@ -44,7 +44,7 @@ var _ = Describe("Hazelcast Map Config with Persistence", Label("map_persistence
 		assertDoesNotExist(hzLookupKey, &hazelcastcomv1alpha1.Hazelcast{})
 	})
 
-	It("should fail when persistence of Map CR and Hazelcast CR do not match", Label("fast"), func() {
+	It("should fail when persistence of Map CR and Hazelcast CR do not match", FlakeAttempts(2), Label("fast"), func() {
 		setLabelAndCRName("hmp-1")
 		hazelcast := hazelcastconfig.Default(hzLookupKey, ee, labels)
 		CreateHazelcastCR(hazelcast)

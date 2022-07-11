@@ -86,7 +86,7 @@ func CreateHazelcastCR(hazelcast *hazelcastcomv1alpha1.Hazelcast) {
 				return false
 			}
 			return isHazelcastRunning(hz)
-		}, 10*Minute, interval).Should(BeTrue())
+		}, 15*Minute, interval).Should(BeTrue())
 	})
 }
 
