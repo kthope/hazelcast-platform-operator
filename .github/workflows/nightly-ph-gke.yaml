@@ -50,13 +50,11 @@ jobs:
         run: |
           if [[ "${{github.event_name}}" == "workflow_dispatch" ]]; then
             IMG=ttl.sh/$(uuidgen):2h
-            echo "IMG=${IMG}" >> $GITHUB_ENV
             echo "::set-output name=IMG::${IMG}"
             make docker-build-ci IMG=$IMG VERSION=${{github.sha}}
             make docker-push IMG=$IMG
           else
             IMG=hazelcast/hazelcast-platform-operator:latest-snapshot
-            echo "IMG=${IMG}" >> $GITHUB_ENV
             echo "::set-output name=IMG::${IMG}"
           fi
 
@@ -66,7 +64,7 @@ jobs:
     needs: [create-gke-cluster, get-image]
     env:
       IMG: ${{ needs.get-image.outputs.IMG }}
-      NAMESPACE: test-operator-nightly-ee
+      NAMESPACE: test-operator-ph-nightly-ee
       PHONE_HOME_ENABLED: true
       CLUSTER_NAME: ${{ needs.create-gke-cluster.outputs.CLUSTER_NAME }}
       NAME_PREFIX: hp-ee-${{ github.run_id }}-
@@ -127,11 +125,6 @@ jobs:
           GO_TEST_FLAGS=-ee=true
           make test-ph GO_TEST_FLAGS=${GO_TEST_FLAGS} NAMESPACE=$NAMESPACE NAME_PREFIX=$NAME_PREFIX WORKFLOW_ID=ph
 
-      - name: Clean up after Tests
-        if: always()
-        run: |
-          make clean-up-namespace NAMESPACE=${NAMESPACE}
-
       - name: Upload Test Report
         if: always()
         uses: actions/upload-artifact@v3
@@ -163,7 +156,6 @@ jobs:
           credentials_json: ${{ secrets.GKE_SA_KEY }}
 
       - name: Delete GKE cluster
-        if: always()
         run: |-
           gcloud container clusters delete ${{ env.CLUSTER_NAME }} --zone ${{ env.GKE_ZONE }} --quiet
 

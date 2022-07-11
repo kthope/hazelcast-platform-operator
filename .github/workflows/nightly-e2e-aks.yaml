@@ -79,13 +79,11 @@ jobs:
         run: |
           if [[ "${{github.event_name}}" == "workflow_dispatch" ]]; then
             IMG=ttl.sh/$(uuidgen):2h
-            echo "IMG=${IMG}" >> $GITHUB_ENV
             echo "::set-output name=IMG::${IMG}"
             make docker-build-ci IMG=$IMG VERSION=${{github.sha}}
             make docker-push IMG=$IMG
           else
             IMG=hazelcast/hazelcast-platform-operator:latest-snapshot
-            echo "IMG=${IMG}" >> $GITHUB_ENV
             echo "::set-output name=IMG::${IMG}"
           fi
 
@@ -162,11 +160,6 @@ jobs:
             *)  echo Unexpected edition: ${{ matrix.edition }} && exit 1;;
           esac
           make test-e2e GO_TEST_FLAGS=${GO_TEST_FLAGS} NAMESPACE=${NAMESPACE} NAME_PREFIX=${NAME_PREFIX} WORKFLOW_ID=aks
-
-      - name: Clean up after Tests
-        if: ${{ always() }}
-        run: |
-          make clean-up-namespace NAMESPACE=${NAMESPACE}
 
       - name: Upload Test Report
         if: always()

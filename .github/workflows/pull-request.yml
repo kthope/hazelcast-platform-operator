@@ -149,7 +149,6 @@ jobs:
         id: build-img
         run: |
             IMG=ttl.sh/$(uuidgen):2h
-            echo "IMG=${IMG}" >> $GITHUB_ENV
             echo "::set-output name=IMG::${IMG}"
 
             make docker-build-ci IMG=$IMG VERSION=${{github.sha}}
@@ -241,11 +240,6 @@ jobs:
             *)  echo Unexpected edition: ${{ matrix.edition }} && exit 1;;
           esac
           make test-e2e GO_TEST_FLAGS=${GO_TEST_FLAGS} NAMESPACE=$NAMESPACE NAME_PREFIX=$NAME_PREFIX
-
-      - name: Clean up after Tests
-        if: always()
-        run: |
-          make clean-up-namespace NAMESPACE=${NAMESPACE}
 
   delete-cluster:
     name: Delete Cluster
