@@ -250,7 +250,7 @@ var _ = Describe("Hazelcast CR with Persistence feature enabled", Label("hz_pers
 				context.Background(), types.NamespacedName{Name: hotBackup.Name, Namespace: hzNamespace}, hb)
 			Expect(err).ToNot(HaveOccurred())
 			return hb.Status.State
-		}, 10*Minute, interval).Should(Equal(hazelcastcomv1alpha1.HotBackupSuccess))
+		}, 15*Minute, interval).Should(Equal(hazelcastcomv1alpha1.HotBackupSuccess))
 
 		seq := GetBackupSequence(t, hzLookupKey)
 
