@@ -225,7 +225,7 @@ jobs:
           grep -E -q "Preflight result: PASSED\"( |$)" preflight.log || exit 1
 
       - name: Clean Up Openshift Namespace
-        if: steps.project_creation.outputs.exit_code == 0
+        if: always() && steps.project_creation.outputs.exit_code == 0
         run: |
           oc delete project ${NAMESPACE}
 
